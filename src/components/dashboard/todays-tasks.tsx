@@ -83,7 +83,7 @@ export function TodaysTasks({ tasks }: TodaysTasksProps) {
         return (
             <Card className="h-full">
                 <CardHeader>
-                    <CardTitle>Today's Tasks</CardTitle>
+                    <CardTitle>Today&apos;s Tasks</CardTitle>
                     <CardDescription>Tasks and bills due today.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -115,7 +115,7 @@ export function TodaysTasks({ tasks }: TodaysTasksProps) {
     return (
         <Card className="h-full">
             <CardHeader>
-                <CardTitle>Today's Agenda</CardTitle>
+                <CardTitle>Today&apos;s Agenda</CardTitle>
                 <CardDescription>A combined view of your tasks, bills, and reminders.</CardDescription>
             </CardHeader>
             <CardContent>

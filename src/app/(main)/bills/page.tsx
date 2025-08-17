@@ -224,7 +224,7 @@ export default function BillsPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No upcoming bills. You're all caught up!</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No upcoming bills. You&apos;re all caught up!</p>
               )}
             </div>
           </CardContent>
