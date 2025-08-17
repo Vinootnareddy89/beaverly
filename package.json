@@ -67,3 +67,12 @@
     "typescript-eslint": "^8.39.1"
   }
 }
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "echo \"No tests yet\""
+  }
+}
