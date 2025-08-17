@@ -1,6 +1,6 @@
 name: Node.js CI
 
-# Trigger on push or pull request to main branch
+# Trigger workflow on push or pull request to main branch
 on:
   push:
     branches:
@@ -10,28 +10,29 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  build-and-lint:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout your repository
+      # 1. Checkout the repository
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Step 2: Set up Node.js
+      # 2. Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
 
-      # Step 3: Install dependencies
+      # 3. Install dependencies
       - name: Install dependencies
         run: npm install
 
-      # Step 4: Run linting (optional)
+      # 4. Run ESLint (non-interactive)
       - name: Run ESLint
-        run: npm run lint
+        run: npx next lint --max-warnings=0
 
-      # Step 5: Run tests
+      # 5. Run tests (optional)
       - name: Run tests
         run: npm test
+
