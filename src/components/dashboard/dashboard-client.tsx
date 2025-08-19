@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import type { Task, Event, Bill, Reminder } from '@/lib/types';
 import { TaskList } from '@/components/dashboard/task-list';
 import { ProgressTracker } from '@/components/dashboard/progress-tracker';
-import { TodaysTasks } from '@/components/dashboard/todays-tasks';
+import TodaysTasks from '@/components/dashboard/todays-tasks';
 import { VoiceMemo } from '@/components/dashboard/voice-memo';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Calendar } from "@/components/ui/calendar";
@@ -132,3 +132,4 @@ export default function DashboardClient() {
     </div>
   );
 }
+
