@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -14,6 +13,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/auth-context';
 import { shoppingListService } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
+
+export const dynamic = 'force-dynamic';
 
 export default function ShoppingListPage() {
   const { user, loading } = useAuth();
@@ -102,7 +104,10 @@ export default function ShoppingListPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleAddItem} className="flex gap-2 mb-4">
+          <Label htmlFor="shopping-item" className="sr-only">Add an item</Label>
           <Input
+            id="shopping-item"
+            name="shopping-item"
             value={newItemText}
             onChange={(e) => setNewItemText(e.target.value)}
             placeholder="Add an item..."

@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -7,12 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Pencil, Calendar as CalendarIcon, AlertCircle, ChevronDown, Tag, Check } from 'lucide-react';
+import { Plus, Trash2, Pencil, Calendar as CalendarIcon, AlertCircle, ChevronDown, Tag, Check, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { format, isPast, isToday, differenceInDays } from 'date-fns';
+import { format, isPast, isToday, differenceInDays, parse, parseISO, startOfToday, isValid } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from '@/context/auth-context';
 import { tasksService } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +19,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label';
 import { ShareButton } from './share-button';
 import { Separator } from '@/components/ui/separator';
+import { Timestamp } from 'firebase/firestore';
 
 interface TaskListProps {
   tasks: Task[];
@@ -27,18 +27,43 @@ interface TaskListProps {
 
 const allCategories: TaskCategory[] = ["personal", "work/school"];
 
+// Moved this function outside the component to make it a pure, stable utility function.
+const getDueDateInfo = (dueDateValue: Date | null | undefined) => {
+    if (!dueDateValue || !isValid(dueDateValue)) {
+      return { priorityClass: '', tooltipText: '' };
+    }
+    
+    const today = startOfToday();
+    
+    if (isPast(dueDateValue) && !isToday(dueDateValue)) {
+        return { priorityClass: 'text-destructive', tooltipText: `Overdue since ${format(dueDateValue, 'MMM d')}`};
+    }
+    
+    const daysUntilDue = differenceInDays(dueDateValue, today);
+    if (daysUntilDue === 0) {
+        return { priorityClass: 'text-amber-600 dark:text-amber-500', tooltipText: 'Due today' };
+    }
+    if (daysUntilDue > 0 && daysUntilDue <= 3) {
+        return { priorityClass: 'text-sky-600 dark:text-sky-500', tooltipText: `Due in ${daysUntilDue} day(s)`};
+    }
+    return { priorityClass: '', tooltipText: `Due ${format(dueDateValue, 'MMM d')}`};
+};
+
+
 export function TaskList({ tasks = [] }: TaskListProps) {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
+  const [newTaskTime, setNewTaskTime] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory[]>([]);
   const [isAdding, setIsAdding] = useState(false);
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingDueDate, setEditingDueDate] = useState('');
+  const [editingTime, setEditingTime] = useState('');
   const [editingCategories, setEditingCategories] = useState<TaskCategory[]>([]);
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -47,21 +72,25 @@ export function TaskList({ tasks = [] }: TaskListProps) {
 
     setIsAdding(true);
 
+    const newTask: Omit<Task, 'id'> = {
+      text: newTaskText.trim(),
+      completed: false,
+      createdAt: new Date().toISOString(),
+      dueDate: newTaskDueDate ? parseISO(newTaskDueDate) : null,
+      time: newTaskTime || null,
+      categories: newTaskCategory,
+    };
+
     try {
-      await tasksService.add({
-        text: newTaskText.trim(),
-        completed: false,
-        createdAt: new Date(),
-        dueDate: newTaskDueDate ? new Date(`${newTaskDueDate}T00:00:00`) : undefined,
-        categories: newTaskCategory,
-      });
+      await tasksService.add(newTask);
       toast({ title: 'Task Added', description: `"${newTaskText.trim()}" has been added.` });
       setNewTaskText('');
       setNewTaskDueDate('');
+      setNewTaskTime('');
       setNewTaskCategory([]);
     } catch (error) {
       console.error("Error adding task: ", error);
-      toast({ title: 'Error', description: 'Could not add task. Please check the console for details.', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Could not add task. Please check console for details.', variant: 'destructive' });
     } finally {
       setIsAdding(false);
     }
@@ -70,18 +99,18 @@ export function TaskList({ tasks = [] }: TaskListProps) {
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
     setEditingText(task.text);
-    // Safely handle date conversion
-    const dueDate = task.dueDate ? new Date(task.dueDate as any) : null;
-    setEditingDueDate(dueDate && !isNaN(dueDate.getTime()) ? format(dueDate, 'yyyy-MM-dd') : '');
+    setEditingDueDate(task.dueDate ? format(task.dueDate, 'yyyy-MM-dd') : '');
+    setEditingTime(task.time || '');
     setEditingCategories(task.categories || []);
   };
 
   const handleSaveEdit = async () => {
     if (!editingTask || !user) return;
 
-    const updatedData: Partial<Task> = { 
-      text: editingText, 
-      dueDate: editingDueDate ? new Date(editingDueDate + 'T00:00:00') : undefined, 
+    const updatedData: Partial<Task> = {
+      text: editingText,
+      dueDate: editingDueDate ? parseISO(editingDueDate) : null,
+      time: editingTime || null,
       categories: editingCategories,
     };
 
@@ -94,17 +123,17 @@ export function TaskList({ tasks = [] }: TaskListProps) {
       toast({ title: 'Error', description: 'Could not update task.', variant: 'destructive' });
     }
   };
-  
+
   const toggleTaskCompletion = async (id: string, completed: boolean) => {
     if(!user) return;
     try {
-      await tasksService.update(id, { completed: !completed, completedAt: !completed ? new Date() : undefined });
+      await tasksService.update(id, { completed: !completed, completedAt: !completed ? new Date().toISOString() : null });
     } catch (error) {
        console.error("Error toggling task: ", error);
        toast({ title: 'Error', description: 'Could not update task status.', variant: 'destructive' });
     }
   };
-  
+
   const handleDeleteTask = async (id: string) => {
     if(!user) return;
     try {
@@ -123,53 +152,57 @@ export function TaskList({ tasks = [] }: TaskListProps) {
         toast({ title: 'Completed tasks cleared' });
     } catch (error) {
         console.error("Error clearing completed tasks: ", error);
-        toast({ 
-            title: 'Error', 
-            description: 'Could not clear completed tasks.', 
-            variant: 'destructive' 
+        toast({
+            title: 'Error',
+            description: 'Could not clear completed tasks.',
+            variant: 'destructive'
         });
     }
   };
   
-  const getDueDateInfo = (dueDateValue: any) => {
-      if (!dueDateValue) return { priorityClass: '', tooltipText: '' };
-
-      const dueDate = new Date(dueDateValue);
-      if (isNaN(dueDate.getTime())) return { priorityClass: '', tooltipText: '' };
-
-      const today = new Date();
-      
-      if (isPast(dueDate) && !isToday(dueDate)) {
-          return { priorityClass: 'text-destructive', tooltipText: `Overdue since ${format(dueDate, 'MMM d')}`};
-      }
-      
-      const daysUntilDue = differenceInDays(dueDate, today);
-      if (daysUntilDue === 0) {
-          return { priorityClass: 'text-amber-600 dark:text-amber-500', tooltipText: 'Due today' };
-      }
-      if (daysUntilDue > 0 && daysUntilDue <= 3) {
-          return { priorityClass: 'text-sky-600 dark:text-sky-500', tooltipText: `Due in ${daysUntilDue} day(s)`};
-      }
-      return { priorityClass: '', tooltipText: `Due ${format(dueDate, 'MMM d')}`};
+  const formatTime = (timeString: string | null) => {
+    if (!timeString) return '';
+    try {
+        return format(parse(timeString, 'HH:mm', new Date()), 'h:mm a');
+    } catch (e) {
+        return '';
+    }
   }
 
   const sortedIncompleteTasks = tasks
     .filter(task => !task.completed)
     .sort((a, b) => {
-        const dateA = a.dueDate ? new Date(a.dueDate as any) : new Date('2999-12-31');
-        const dateB = b.dueDate ? new Date(b.dueDate as any) : new Date('2999-12-31');
-        return (isNaN(dateA.getTime()) ? new Date('2999-12-31') : dateA).getTime() - (isNaN(dateB.getTime()) ? new Date('2999-12-31') : dateB).getTime();
+        const farFuture = new Date('2999-12-31');
+        
+        const dateA = a.dueDate || farFuture;
+        const dateB = b.dueDate || farFuture;
+
+        if (!isValid(dateA) || !isValid(dateB)) return 0;
+
+        const timeA = a.time ? a.time.replace(':', '') : '0000';
+        const timeB = b.time ? b.time.replace(':', '') : '0000';
+        
+        const combinedA = `${format(dateA, 'yyyyMMdd')}${timeA}`;
+        const combinedB = `${format(dateB, 'yyyyMMdd')}${timeB}`;
+        
+        if (combinedA < combinedB) return -1;
+        if (combinedA > combinedB) return 1;
+
+        // If dates and times are the same, sort by creation time
+        const creationA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+        const creationB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        return creationA.getTime() - creationB.getTime();
     });
-  
+
   const completedTasks = tasks.filter(task => task.completed);
-  
+
   const handleCategorySelect = (category: TaskCategory) => {
     const newSelection = newTaskCategory.includes(category)
       ? newTaskCategory.filter((c) => c !== category)
       : [...newTaskCategory, category];
     setNewTaskCategory(newSelection);
   };
-  
+
   const handleEditingCategorySelect = (category: TaskCategory) => {
     const newSelection = editingCategories.includes(category)
       ? editingCategories.filter((c) => c !== category)
@@ -179,7 +212,9 @@ export function TaskList({ tasks = [] }: TaskListProps) {
 
   const renderTaskItem = (task: Task) => {
       const { priorityClass, tooltipText } = getDueDateInfo(task.dueDate);
-      
+      const dueDate = task.dueDate;
+      const time = task.time;
+
       return (
         <div
             key={task.id}
@@ -195,45 +230,60 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                 <label
                     htmlFor={`task-${task.id}`}
                     className={cn(
-                        'text-sm transition-colors',
+                        'text-sm transition-colors cursor-pointer',
                         task.completed && 'text-muted-foreground line-through'
                     )}
                 >
                     {task.text}
                 </label>
-                 {task.categories && task.categories.length > 0 && (
-                    <div className="flex gap-1.5 mt-1">
-                        {task.categories.map(cat => (
-                            <span key={cat} className="text-xs text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded-sm capitalize">{cat}</span>
-                        ))}
-                    </div>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                    {dueDate && !task.completed && isValid(dueDate) && (
+                        <span className={cn('flex items-center gap-1 text-xs text-muted-foreground', priorityClass)}>
+                            <CalendarIcon className="h-3 w-3" />
+                            <span>{format(dueDate, 'MMM d')}</span>
+                        </span>
+                    )}
+                    {time && !task.completed && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatTime(time)}</span>
+                        </span>
+                    )}
+                    {task.categories && task.categories.length > 0 && (
+                        <div className="flex gap-1.5">
+                            {task.categories.map(cat => (
+                                <span key={cat} className="text-xs text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded-sm capitalize">{cat}</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
-            
-            {task.dueDate && !task.completed && (
-                 <TooltipProvider>
+
+            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                             <span className={cn('flex items-center gap-1.5 text-xs', priorityClass)}>
-                                <CalendarIcon className="h-4 w-4" />
-                                <span>{format(new Date(task.dueDate as any), 'MMM d')}</span>
-                                {priorityClass && <AlertCircle className="h-4 w-4" />}
-                            </span>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditTask(task)}>
+                                <Pencil className="h-4 w-4 text-muted-foreground" />
+                            </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{tooltipText}</p>
+                            <p>Edit Task</p>
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
-            )}
-
-            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditTask(task)}>
-                    <Pencil className="h-4 w-4 text-muted-foreground" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <TooltipProvider>
+                     <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteTask(task.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                             <p>Delete Task</p>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
             </div>
         </div>
       )
@@ -248,7 +298,7 @@ export function TaskList({ tasks = [] }: TaskListProps) {
         </CardHeader>
         <CardContent className="flex-grow p-0">
           <form onSubmit={handleAddTask} className="p-6 border-b space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-center gap-2">
                 <Input
                     value={newTaskText}
                     onChange={(e) => setNewTaskText(e.target.value)}
@@ -257,14 +307,24 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                     aria-label="New task name"
                     disabled={isAdding}
                 />
-                 <Input
-                      type="date"
-                      value={newTaskDueDate}
-                      onChange={(e) => setNewTaskDueDate(e.target.value)}
-                      className="w-full sm:w-auto"
-                      aria-label="New task due date"
-                      disabled={isAdding}
-                  />
+                 <div className="flex w-full sm:w-auto gap-2">
+                    <Input
+                        type="date"
+                        value={newTaskDueDate}
+                        onChange={(e) => setNewTaskDueDate(e.target.value)}
+                        className="w-full"
+                        aria-label="New task due date"
+                        disabled={isAdding}
+                    />
+                    <Input
+                        type="time"
+                        value={newTaskTime}
+                        onChange={(e) => setNewTaskTime(e.target.value)}
+                        className="w-full"
+                        aria-label="New task time"
+                        disabled={isAdding}
+                    />
+                 </div>
               </div>
                <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Category</Label>
@@ -272,7 +332,7 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                     {allCategories.map((category) => {
                         const isSelected = newTaskCategory.includes(category);
                         return (
-                            <Button 
+                            <Button
                                 key={category}
                                 type="button"
                                 variant={isSelected ? 'default' : 'outline'}
@@ -297,7 +357,7 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                     )}
                 </Button>
           </form>
-          <ScrollArea className="h-[300px]">
+          <ScrollArea className="h-[420px]">
             <div className="p-6 space-y-2">
               {sortedIncompleteTasks.length > 0 ? (
                 sortedIncompleteTasks.map(renderTaskItem)
@@ -306,7 +366,7 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                   No pending tasks. Add one above to get started!
                 </p>
               )}
-            
+
               {completedTasks.length > 0 && (
                 <Collapsible className="pt-4">
                   <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-muted-foreground w-full group">
@@ -334,21 +394,30 @@ export function TaskList({ tasks = [] }: TaskListProps) {
           <ShareButton tasks={tasks} />
         </CardFooter>
       </Card>
-    
+
       {editingTask && (
           <Dialog open={!!editingTask} onOpenChange={(isOpen) => !isOpen && setEditingTask(null)}>
               <DialogContent onPointerDownOutside={(e) => e.preventDefault()}>
                   <DialogHeader>
                       <DialogTitle>Edit Task</DialogTitle>
+                      <DialogDescription>
+                        Make changes to your task here. Click save when you're done.
+                      </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                       <div className="grid gap-2">
                           <Label htmlFor="edit-task-text">Task Name</Label>
                           <Input id="edit-task-text" value={editingText} onChange={(e) => setEditingText(e.target.value)} />
                       </div>
-                      <div className="grid gap-2">
-                          <Label htmlFor="edit-task-date">Due Date</Label>
-                          <Input id="edit-task-date" type="date" value={editingDueDate} onChange={(e) => setEditingDueDate(e.target.value)} />
+                      <div className="grid grid-cols-2 gap-2">
+                         <div className="grid gap-2">
+                            <Label htmlFor="edit-task-date">Due Date</Label>
+                            <Input id="edit-task-date" type="date" value={editingDueDate} onChange={(e) => setEditingDueDate(e.target.value)} />
+                          </div>
+                           <div className="grid gap-2">
+                            <Label htmlFor="edit-task-time">Time</Label>
+                            <Input id="edit-task-time" type="time" value={editingTime} onChange={(e) => setEditingTime(e.target.value)} />
+                          </div>
                       </div>
                       <div className="grid gap-2">
                           <Label>Categories</Label>
@@ -356,7 +425,7 @@ export function TaskList({ tasks = [] }: TaskListProps) {
                             {allCategories.map((category) => {
                                 const isSelected = editingCategories.includes(category);
                                 return (
-                                    <Button 
+                                    <Button
                                         key={category}
                                         type="button"
                                         variant={isSelected ? 'default' : 'outline'}
@@ -383,4 +452,3 @@ export function TaskList({ tasks = [] }: TaskListProps) {
     </>
   );
 }
-    

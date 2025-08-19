@@ -1,10 +1,10 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Plus, Trash2, Calendar as CalendarIcon, Bell } from 'lucide-react';
 import { format, parseISO, isPast, startOfToday } from 'date-fns';
 import type { Reminder } from '@/lib/types';
@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/context/auth-context';
 import { remindersService } from '@/lib/firebase';
+
+export const dynamic = 'force-dynamic';
 
 export default function RemindersPage() {
   const { user, loading } = useAuth();
@@ -76,19 +78,27 @@ export default function RemindersPage() {
           <CardDescription>Set reminders for birthdays, anniversaries, or other important events.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAddReminder} className="flex flex-col sm:flex-row gap-4">
-            <Input
-              value={newReminderText}
-              onChange={(e) => setNewReminderText(e.target.value)}
-              placeholder="Reminder (e.g., Mom's Birthday)"
-              className="flex-grow"
-            />
-            <Input
-              value={newReminderDate}
-              onChange={(e) => setNewReminderDate(e.target.value)}
-              type="date"
-              className="sm:w-auto"
-            />
+          <form onSubmit={handleAddReminder} className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="grid gap-1.5 flex-grow">
+              <Label htmlFor="reminder-text">Reminder</Label>
+              <Input
+                id="reminder-text"
+                name="reminder-text"
+                value={newReminderText}
+                onChange={(e) => setNewReminderText(e.target.value)}
+                placeholder="e.g., Mom's Birthday"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="reminder-date">Date</Label>
+              <Input
+                id="reminder-date"
+                name="reminder-date"
+                value={newReminderDate}
+                onChange={(e) => setNewReminderDate(e.target.value)}
+                type="date"
+              />
+            </div>
             <Button type="submit">
               <Plus className="mr-2 h-4 w-4" /> Add Reminder
             </Button>

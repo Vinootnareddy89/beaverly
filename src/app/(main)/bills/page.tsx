@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, Banknote, Calendar as CalendarIcon, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, parseISO, isPast, addMonths } from 'date-fns';
+import { format, parseISO, isPast, addMonths, startOfToday, isValid } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Bill } from '@/lib/types';
@@ -16,6 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/auth-context';
 import { billsService } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+
+export const dynamic = 'force-dynamic';
 
 export default function BillsPage() {
   const { user, loading } = useAuth();
@@ -52,7 +54,7 @@ export default function BillsPage() {
     const newBill: Omit<Bill, 'id'> = {
       name: newBillName.trim(),
       amount: parseFloat(newBillAmount),
-      dueDate: new Date(newBillDueDate).toISOString(),
+      dueDate: newBillDueDate, // Stored as 'yyyy-MM-dd' string from input type="date"
       isPaid: false,
       isRecurring: newBillIsRecurring,
     };
@@ -77,18 +79,36 @@ export default function BillsPage() {
   const toggleBillPaid = async (bill: Bill) => {
     if (!user) return;
     
-    await billsService.update(bill.id, { isPaid: !bill.isPaid });
+    // Optimistically update the UI
+    const originalBills = bills;
+    const newBills = bills.map(b => b.id === bill.id ? { ...b, isPaid: !b.isPaid } : b);
+    setBills(newBills);
 
-    if (!bill.isPaid && bill.isRecurring) {
-        const nextDueDate = addMonths(parseISO(bill.dueDate), 1);
-        const nextBill: Omit<Bill, 'id'> = {
-          name: bill.name,
-          amount: bill.amount,
-          dueDate: nextDueDate.toISOString(),
-          isPaid: false,
-          isRecurring: bill.isRecurring,
-        };
-        await billsService.add(nextBill);
+    try {
+        await billsService.update(bill.id, { isPaid: !bill.isPaid });
+
+        if (!bill.isPaid && bill.isRecurring) {
+            const currentDueDate = parseISO(bill.dueDate);
+            if(isValid(currentDueDate)) {
+                const nextDueDate = addMonths(currentDueDate, 1);
+                const nextBill: Omit<Bill, 'id'> = {
+                  name: bill.name,
+                  amount: bill.amount,
+                  dueDate: format(nextDueDate, 'yyyy-MM-dd'),
+                  isPaid: false,
+                  isRecurring: bill.isRecurring,
+                };
+                await billsService.add(nextBill);
+            }
+        }
+    } catch (error) {
+        // Revert on error
+        setBills(originalBills);
+        toast({
+            title: 'Error updating bill',
+            description: 'Could not update bill status.',
+            variant: 'destructive'
+        });
     }
   };
   
@@ -128,6 +148,13 @@ export default function BillsPage() {
   const upcomingTotal = upcomingBills.reduce((total, bill) => total + bill.amount, 0);
   const paidTotal = paidBills.reduce((total, bill) => total + bill.amount, 0);
 
+  const isToday = (someDate: Date) => {
+    const today = startOfToday()
+    return someDate.getFullYear() === today.getFullYear() &&
+           someDate.getMonth() === today.getMonth() &&
+           someDate.getDate() === today.getDate()
+  }
+
   return (
     <TooltipProvider>
     <div className="space-y-8">
@@ -142,6 +169,7 @@ export default function BillsPage() {
                 <Label htmlFor="bill-name">Bill Name</Label>
                 <Input
                 id="bill-name"
+                name="bill-name"
                 value={newBillName}
                 onChange={(e) => setNewBillName(e.target.value)}
                 placeholder="e.g., Internet"
@@ -151,6 +179,7 @@ export default function BillsPage() {
                 <Label htmlFor="bill-amount">Amount</Label>
                 <Input
                 id="bill-amount"
+                name="bill-amount"
                 value={newBillAmount}
                 onChange={(e) => setNewBillAmount(e.target.value)}
                 placeholder="$50.00"
@@ -161,13 +190,14 @@ export default function BillsPage() {
                 <Label htmlFor="bill-due-date">Due Date</Label>
                 <Input
                 id="bill-due-date"
+                name="bill-due-date"
                 value={newBillDueDate}
                 onChange={(e) => setNewBillDueDate(e.target.value)}
                 type="date"
                 />
             </div>
             <div className="flex items-center space-x-2 sm:col-span-4">
-                <Checkbox id="recurring" checked={newBillIsRecurring} onCheckedChange={(checked) => setNewBillIsRecurring(checked as boolean)} />
+                <Checkbox id="recurring" name="recurring" checked={newBillIsRecurring} onCheckedChange={(checked) => setNewBillIsRecurring(checked as boolean)} />
                 <Label htmlFor="recurring" className="font-normal">This is a monthly recurring bill</Label>
             </div>
             <Button type="submit" className="sm:col-span-4 w-full">
@@ -212,7 +242,7 @@ export default function BillsPage() {
                             <Banknote className="h-4 w-4" />
                             <span>${bill.amount.toFixed(2)}</span>
                           </div>
-                          <div className={cn("flex items-center gap-1", isPast(parseISO(bill.dueDate)) && !isPast(new Date()) && "text-destructive")}>
+                          <div className={cn("flex items-center gap-1", isPast(parseISO(bill.dueDate)) && !isToday(parseISO(bill.dueDate)) && "text-destructive")}>
                             <CalendarIcon className="h-4 w-4" />
                             <span>{format(parseISO(bill.dueDate), 'MMM d, yyyy')}</span>
                           </div>

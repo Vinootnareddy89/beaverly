@@ -14,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/auth-context';
 import { habitsService } from '@/lib/firebase';
 
+export const dynamic = 'force-dynamic';
+
 const iconMap = {
   Zap: <Zap />,
   Book: <Book />,
