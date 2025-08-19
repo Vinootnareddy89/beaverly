@@ -144,4 +144,3 @@ export default function TodaysTasks({ tasks = [], bills = [], events = [], remin
         </Card>
     );
 }
-
